@@ -10,11 +10,11 @@ PROMPT = """
 
 Title: {title}
 
-list positive_aspects: '{positives}'
-list negative_aspects: '{negatives}'
+list positive_aspects: '{plus_list}'
+list negative_aspects: '{min_list}'
 
-Mentioned negatives: '{negatives}'
-Mentioned positives: '{positives}'
+Mentioned positives: '{plus}'
+Mentioned negatives: '{min}'
 
 Review: {content}
 
@@ -37,9 +37,19 @@ Based on all analysis emotions and analysis scores between 0 and 100, calculate 
 3. Develop a Market Solution:
 Using all the provided data, create a market strategy or solution for a retailer specializing in electronics. 
 Focus on actionable insights that can enhance sales, improve customer satisfaction, or optimize product offerings.
-   - Develop a comprehensive market strategy recommendation
-   - Base suggestions on the holistic review analysis
-   - Include insights on product positioning, potential improvements, and market opportunities
+   - The answer should be more like what the store has to do with the stocks
+   example:
+         "product_continuation_recommendation": "Continue Selling",
+         "sales_potential": {{
+             "current_market_viability": "High",
+             "customer_satisfaction_level": 4.2,
+             "repeat_purchase_likelihood": "Moderate to High"
+         }},
+         "inventory_strategy": {{
+             "stock_recommendation": "Maintain current inventory levels",
+             "suggested_stock_range": "2-3 months of average sales volume",
+             "reorder_frequency": "Monthly"
+         }},
 
 {format_instructions}
 """

@@ -7,9 +7,18 @@ import plotly.graph_objs as go
 import pandas as pd
 from collections import Counter
 from datetime import datetime
+from dateutil import parser
 import statistics
 from collections import Counter
+import ast
+from babel.dates import parse_date
+import matplotlib.pyplot as plt
 
+month_translation = {
+    "januari": "January", "februari": "February", "maart": "March", "april": "April",
+    "mei": "May", "juni": "June", "juli": "July", "augustus": "August", 
+    "september": "September", "oktober": "October", "november": "November", "december": "December"
+}
 
 def main():
     # https://docs.streamlit.io/
@@ -22,32 +31,202 @@ def main():
     if st.sidebar.button("Confirm", type="primary"):
         # Get the data
         data = get_data.get_reviews(url)  # TODO
-        # Analyze the data
+        # start first chain
         analyzed_reviews = analyze.analyze_reviews(data, chain)
-        st.code(analyzed_reviews)
+        # transform chain data to make it operateable
         analyzed_reviews = transform_reviews(analyzed_reviews)
-        st.code(analyzed_reviews)
         # Get data for overall score
         result = calculate_scores(analyzed_reviews)
-        st.code(result)
-        # scores_list = result['scores']
-        """average, median, most_common_emote, bar => ready for dashboard"""
         average = result['average']
-        st.code(average)
         median = result['median']
-        st.code(median)
+        # most common feeling about the product
         most_common_emote = most_common_emotion(analyzed_reviews)
-        st.code(most_common_emote)
+        # average feeling
+        display_emote(most_common_emote)
+        st.markdown("#### Average score")
+        st.plotly_chart(create_gauge_chart(average))
+        st.markdown("#### Median score")
+        st.plotly_chart(create_gauge_chart(median))
+        st.write("### Emotion Frequency Bar Chart")
+        plot_emotion_frequency_streamlit(analyzed_reviews)
+        st.write("### Line Chart: Emotions Over Time")
+        linechart = prepare_data_for_line_chart(extract_dates_and_emotions(analyzed_reviews))
+        plot_line_chart(linechart)
+
         # bar = plot_emotion_frequency(analyzed_reviews)
+        # extract necessary data from the previous chain
         alldata = extract_review_data(analyzed_reviews)
-        st.code(alldata)
-        secondanalysis_reviews = analyze.analyze_reviews(data, chain1)
-        st.code(secondanalysis_reviews)
+        # start second chain
+        secondanalysis_reviews = analyze.analyze_reviews_batch(alldata, chain1)
+        # transform chain data to make it operateable
+        secondanalysis_reviews = transform_second(secondanalysis_reviews)
+        # transform data to create clear output
+        preprocess_columns(secondanalysis_reviews)
+
+        # gezondheidsratio
+        gezondratio = secondanalysis_reviews['score'].iloc[0]
+        st.plotly_chart(create_gezondratio_chart(gezondratio))
+
+        # display most common reviews, solutions, reasoning for positive, negative and market
+        display_reviews(secondanalysis_reviews['positives'], secondanalysis_reviews['negatives'], secondanalysis_reviews['negative_solution'], secondanalysis_reviews['negative_reasoning'], secondanalysis_reviews['market_solution'], secondanalysis_reviews['market_reasoning'])
+
+def preprocess_columns(df):
+    for column in ['positives', 'negatives', 'negative_reasoning', 'negative_solution', 'market_solution', 'market_reasoning']:
+        df[column] = df[column].apply(lambda x: eval(x) if isinstance(x, str) else x)
+
+def display_reviews(positives_column, negatives_column, reasoning_column, solution_column, market_reasoning_column, market_solution_column):
+    st.subheader("Product Reviews")
+
+    # Create two columns for positives and negatives
+    col1, col2 = st.columns(2)
+
+    # Positive Reviews in the first column
+    with col1:
+        st.markdown("### Positive Reviews")
+        for positives in positives_column:
+            if isinstance(positives, list):
+                for review in positives:
+                    st.markdown(f"✅ {review}")
+
+    # Negative Reviews in the second column
+    with col2:
+        st.markdown("### Negative Reviews")
+        for negatives in negatives_column:
+            if isinstance(negatives, list):
+                for review in negatives:
+                    st.markdown(f"❌ {review}")
+
+    # Add reasoning and solution below the lists
+    st.markdown("### Negative Reasoning and Solutions")
+    for reasoning, solution in zip(solution_column, reasoning_column):
+        st.markdown("#### Suggested Solutions:")
+        if isinstance(solution, list):
+            for sol in solution:
+                st.markdown(f"- 🛠️ {sol}")
+        st.markdown("#### Negative Reasoning:")
+        if isinstance(reasoning, list):
+            for reason in reasoning:
+                st.markdown(f"- 💭 {reason}")
+
+    # Add market reasoning and solutions
+    st.markdown("### Market Insights")
+    for market_reasoning, market_solution in zip(market_solution_column, market_reasoning_column):
+        st.markdown("#### Market Solutions:")
+        if isinstance(market_solution, list):
+            for sol in market_solution:
+                st.markdown(f"- 🚀 {sol}")
+        st.markdown("#### Market Reasoning:")
+        if isinstance(market_reasoning, list):
+            for reason in market_reasoning:
+                st.markdown(f"- 📊 {reason}")
 
 
-        # st.line_chart(plot_emotions_over_time)
-        # st.bar_chart(plot_emotion_frequency)
-        # TODO: KENZO -> Use this information to create a visual dashboard (e.v.t w/ LLM's)
+
+
+
+def display_emote(feeling):
+    """
+    Displays an emote on the dashboard based on the given feeling.
+    
+    Parameters:
+    feeling (str): The current feeling, one of ['angry', 'frustrated', 'sad', 'resentment', 'happy'].
+    """
+    # Mapping feelings to emotes
+    emotes = {
+        'angry': '😡',
+        'frustrated': '😠',
+        'sad': '😢',
+        'resentment': '😤',
+        'happy': '😊'
+    }
+    
+    # Default emote if the feeling is not recognized
+    emote = emotes.get(feeling.lower(), '🤔')  # Use '🤔' for unrecognized feelings
+    
+    # Display the feeling and the emote
+    st.subheader("Current Feeling")
+    st.markdown(f"### {feeling.capitalize()} {emote}")
+
+def create_gezondratio_chart(value):
+    """
+    Creates a gauge chart for a value from 0 to 100 with a transparent background.
+    
+    Parameters:
+    value (float): The value to display on the gauge chart.
+    Returns:
+    fig: Plotly figure object
+    """
+    st.markdown("#### Gezondheidsratio")
+
+    # Set color based on value
+    if value < 50:
+        color = "red"
+    elif 50 <= value <= 75:
+        color = "orange"
+    else:
+        color = "green"
+    
+    # Create gauge chart
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        title={'text': "Percentage Gauge"},
+        gauge={
+            'axis': {'range': [0, 100]},  # Range is now 0 to 100
+            'bar': {'color': color},  # The bar color
+            'steps': [
+                {'range': [0, 100], 'color': "rgba(0,0,0,0)"}  # Transparent background
+            ]
+        }
+    ))
+    
+    # Set transparent layout
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",  # Transparent background
+        plot_bgcolor="rgba(0,0,0,0)"   # Transparent plot area
+    )
+    return fig
+
+def create_gauge_chart(value):
+    """
+    Creates a gauge chart with a transparent background and dynamic slider color.
+    
+    Parameters:
+    value (float): The value to display on the gauge chart.
+    Returns:
+    fig: Plotly figure object
+    """
+
+    # Set color based on value
+    if value < 5:
+        color = "red"
+    elif 5 <= value <= 7:
+        color = "orange"
+    else:
+        color = "green"
+    
+    # Create gauge chart
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        title={'text': "Value Gauge"},
+        gauge={
+            'axis': {'range': [0, 10]},  # Set the range of the gauge
+            'bar': {'color': color},  # The bar color
+            'steps': [
+                {'range': [0, 10], 'color': "rgba(0,0,0,0)"}  # Transparent background
+            ]
+        }
+    ))
+    
+    # Set transparent layout
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",  # Transparent background
+        plot_bgcolor="rgba(0,0,0,0)"   # Transparent plot area
+    )
+    
+    return fig
+
 
 def calculate_scores(data):
     """
@@ -85,6 +264,40 @@ def calculate_scores(data):
         "average": average,
         "median": median
     }
+
+def display_product_reviews(reviews_df):
+    """
+    Display product reviews with green '+' for positives and red '-' for negatives.
+    
+    Parameters:
+    -----------
+    reviews_df : pandas.DataFrame
+        DataFrame containing 'positives' and 'negatives' columns
+    """
+    # Validate input
+    if 'positives' not in reviews_df.columns or 'negatives' not in reviews_df.columns:
+        st.error("DataFrame must contain 'positives' and 'negatives' columns")
+        return
+    
+    # Parse positives and negatives using ast.literal_eval
+    positives = ast.literal_eval(reviews_df['positives'].iloc[0])
+    negatives = ast.literal_eval(reviews_df['negatives'].iloc[0])
+
+    # Create two columns for better layout
+    col1, col2 = st.columns(2)
+
+    # Display Positives
+    with col1:
+        st.subheader('Positives')
+        for positive in positives:
+            st.markdown(f"<span style='color:green'>+</span> {positive}", unsafe_allow_html=True)
+
+    # Display Negatives
+    with col2:
+        st.subheader('Negatives')
+        for negative in negatives:
+            st.markdown(f"<span style='color:red'>-</span> {negative}", unsafe_allow_html=True)
+
 
 def most_common_emotion(data):
     """
@@ -178,62 +391,150 @@ def transform_reviews(input_data):
     
     return transformed_data
 
-def plot_emotion_frequency(analyzed_reviews):
+
+
+def transform_second(input_data):
     """
-    Creates a bar chart of emotion frequency.
+    Convert full analysis from the LangChain output to a DataFrame.
+    
+    Args:
+        input_data (dict): Dictionary containing reviews DataFrame and overall analysis
+    
+    Returns:
+        pd.DataFrame: DataFrame with analysis values
+    """
+    # Extract full analysis from the Output class
+    full_analysis = input_data['analysis']
+    
+    # Create a DataFrame
+    analysis_df = pd.DataFrame({
+        'positives': [full_analysis.positives],
+        'negatives': [full_analysis.negatives],
+        'negative_solution': [full_analysis.negative_solution],
+        'negative_reasoning': [full_analysis.negative_reasoning],
+        'score': [full_analysis.score],
+        'score_reasoning': [full_analysis.score_reasoning],
+        'market_solution': [full_analysis.Market_solution],
+        'market_reasoning': [full_analysis.Market_reasoning]
+    })
+    
+    return analysis_df
+
+def plot_emotion_frequency_streamlit(analyzed_reviews):
+    """
+    Displays a bar chart of emotion frequency on a Streamlit dashboard, 
+    with emotions displayed in the order: sad → happy → frustrated → angry → resentment.
 
     Parameters:
     analyzed_reviews (list): List of dictionaries containing review and analysis data.
     """
-    # Define allowed emotions
-    allowed_emotions = ['angry', 'frustrated', 'sad', 'resentment', 'happy']
+    # Define allowed emotions in the desired order
+    allowed_emotions = ['sad', 'happy', 'frustrated', 'angry', 'resentment']
 
     # Count frequency of emotions for bar chart, filtering only allowed emotions
     emotions = [entry['analysis']['emotion'] for entry in analyzed_reviews if entry['analysis']['emotion'] in allowed_emotions]
     emotion_counts = Counter(emotions)
 
     # Ensure all allowed emotions are included, even if count is zero
-    for emotion in allowed_emotions:
-        if emotion not in emotion_counts:
-            emotion_counts[emotion] = 0
+    emotion_frequencies = {emotion: emotion_counts.get(emotion, 0) for emotion in allowed_emotions}
 
     # Bar Chart: Frequency of Emotions
     bar_fig = go.Figure()
-    bar_fig.add_trace(go.Bar(x=list(emotion_counts.keys()), y=list(emotion_counts.values()), name='Emotion Frequency'))
+    bar_fig.add_trace(go.Bar(x=list(emotion_frequencies.keys()), y=list(emotion_frequencies.values()), name='Emotion Frequency'))
     bar_fig.update_layout(
         title='Frequency of Emotions',
         xaxis_title='Emotion',
         yaxis_title='Count',
         template='plotly'
     )
-    bar_fig.show()
-
-# def plot_emotions_over_time(analyzed_reviews):
-#     """
-#     Returns a DataFrame of emotions over time for use in Streamlit or other plots.
-
-#     Parameters:
-#     analyzed_reviews (list): List of dictionaries containing review and analysis data.
-#     """
-#     # Prepare data for line chart
-#     dates_emotions = []
-#     for entry in analyzed_reviews:
-#         date = entry['review']['date']
-#         emotion = entry['analysis']['emotion']
-#         if date:
-#             # Convert date to a consistent format
-#             parsed_date = datetime.strptime(date, '%d %B %Y')
-#             dates_emotions.append((parsed_date, emotion))
     
-#     # Sort by date
-#     dates_emotions.sort()
-#     if not dates_emotions:
-#         return pd.DataFrame(columns=['Date', 'Emotion'])  # Return an empty DataFrame if no data
+    # Display the chart on the Streamlit dashboard
+    st.plotly_chart(bar_fig)
+
+# Function to map Dutch month names to English
+def map_dutch_to_english_month(date_str):
+    month_translation = {
+        'januari': 'January', 'februari': 'February', 'maart': 'March',
+        'april': 'April', 'mei': 'May', 'juni': 'June', 'juli': 'July',
+        'augustus': 'August', 'september': 'September', 'oktober': 'October',
+        'november': 'November', 'december': 'December'
+    }
     
-#     # Create a DataFrame
-#     df = pd.DataFrame(dates_emotions, columns=['Date', 'Emotion'])
-#     return df
+    for dutch, english in month_translation.items():
+        if dutch in date_str:
+            date_str = date_str.replace(dutch, english)
+            break  # Only replace the first found month
+    return date_str
 
+# Function to extract dates and emotions, with duplicates removed
+def extract_dates_and_emotions(mock_data):
+    dates = []
+    emotions = []
+    for entry in mock_data:
+        date = entry['review']['date']
+        emotion = entry['analysis']['emotion']
+        if date:
+            # Handle Dutch month format by translating
+            date = map_dutch_to_english_month(date)
+            dates.append(date)
+            emotions.append(emotion)
 
+    df_emotions = pd.DataFrame({
+        'Date': dates,
+        'Emotion': emotions
+    })
+    df_emotions = df_emotions.drop_duplicates()
+    return df_emotions
+
+# Map emotions to numerical values (for y-axis)
+emotion_mapping = {
+    'sad': 0,
+    'happy': 1,
+    'frustrated': 2,
+    'angry': 3,
+    'resentment': 4
+}
+
+# Reverse the emotion mapping to display emotions on y-axis
+reverse_emotion_mapping = {v: k for k, v in emotion_mapping.items()}
+
+# Function to prepare the data for the line chart with emotions on y-axis
+def prepare_data_for_line_chart(df_emotions):
+    # Convert the 'Date' column to datetime
+    df_emotions['Date'] = pd.to_datetime(df_emotions['Date'], errors='coerce')
+    
+    # Map emotions to numerical values
+    df_emotions['Emotion_Num'] = df_emotions['Emotion'].map(emotion_mapping)
+    
+    # Sort emotions based on date
+    df_emotions = df_emotions.sort_values(by='Date')
+
+    return df_emotions
+
+# Function to plot the line chart with actual emotions on y-axis
+def plot_line_chart(df_emotions_prepared):
+    # Set the 'Date' column as index
+    df_emotions_prepared.set_index('Date', inplace=True)
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot the line chart
+    ax.plot(df_emotions_prepared.index, df_emotions_prepared['Emotion_Num'], marker='o', linestyle='-', color='b')
+    
+    # Set y-ticks to emotions instead of numbers
+    ax.set_yticks(range(len(emotion_mapping)))  # Set y-ticks for each emotion
+    ax.set_yticklabels([reverse_emotion_mapping[i] for i in range(len(emotion_mapping))])  # Map numbers to emotions
+    
+    # Set the labels and title
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Emotion')
+    ax.set_title('Emotions Over Time')
+
+    # Rotate x-axis labels for readability
+    plt.xticks(rotation=45)
+    
+    # Display the plot
+    st.pyplot(fig)
 if __name__ == "__main__":
     main()

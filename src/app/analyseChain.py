@@ -26,7 +26,7 @@ Detailed Analysis Requirements:
    - Criteria for emotion selection:
      * Analyze both the numerical "score" and textual "content"
      * Provide a clear, logical rationale for each emotion assignment
-     * Use a nuanced emotional spectrum (e.g., excited, satisfied, neutral, disappointed, frustrated)
+     * Use only following emotions: (angry, frustrated, sad, resentment, happy)
 
 2. Overall Sentiment Assessment:
    - Develop a holistic emotional interpretation of the review collection

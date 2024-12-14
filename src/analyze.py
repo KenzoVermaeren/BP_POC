@@ -87,3 +87,12 @@ def analyze_reviews(reviews: pd.DataFrame, chain: Runnable) -> List[Dict[str, di
             })
 
     return resp
+
+
+def analyze_reviews_batch(reviews: pd.DataFrame, chain: Runnable) -> List[Dict[str, dict]]:
+    all_data_df = reviews.to_dict()
+    response = chain.invoke(all_data_df)  # Async invocation
+    return {
+            "reviews": reviews,
+            "analysis": response,
+    }
