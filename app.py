@@ -20,56 +20,70 @@ month_translation = {
     "september": "September", "oktober": "October", "november": "November", "december": "December"
 }
 
-def main():
-    # https://docs.streamlit.io/
-    st.title("Coolblue sentiment dashboard")
 
-    url = st.sidebar.text_input(
-        label="Coolblue URL", placeholder="Provide your Coolblue URL here"
-    )
+def main():
+    st.title("Coolblue Sentiment Dashboard")
+    url = st.sidebar.text_input("Coolblue URL", placeholder="Provide your Coolblue URL here")
 
     if st.sidebar.button("Confirm", type="primary"):
         # Get the data
-        data = get_data.get_reviews(url)  # TODO
-        # start first chain
+        data = get_data.get_reviews(url)
         analyzed_reviews = analyze.analyze_reviews(data, chain)
-        # transform chain data to make it operateable
         analyzed_reviews = transform_reviews(analyzed_reviews)
-        # Get data for overall score
-        result = calculate_scores(analyzed_reviews)
-        average = result['average']
-        median = result['median']
-        # most common feeling about the product
+        
+        # Current Feeling - Full Width
         most_common_emote = most_common_emotion(analyzed_reviews)
-        # average feeling
         display_emote(most_common_emote)
-        st.markdown("#### Average score")
-        st.plotly_chart(create_gauge_chart(average))
-        st.markdown("#### Median score")
-        st.plotly_chart(create_gauge_chart(median))
-        st.write("### Emotion Frequency Bar Chart")
+        
+        # Mean, Average, and Health Ratio in Three Columns
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Average score gauge
+            result = calculate_scores(analyzed_reviews)
+            st.markdown("#### Average Score")
+            st.plotly_chart(create_gauge_chart(result['average']), use_container_width=True)
+        
+        with col2:
+            # Median score gauge
+            st.markdown("#### Median Score")
+            st.plotly_chart(create_gauge_chart(result['median']), use_container_width=True)
+        
+        # Emotion Analysis Section
+        st.markdown("## Emotion Analysis")
+        
+        # Bar Chart: Emotion Frequency (Full Width)
+        st.markdown("### Emotion Frequency")
         plot_emotion_frequency_streamlit(analyzed_reviews)
-        st.write("### Line Chart: Emotions Over Time")
+        
+        # Line Chart: Emotions Over Time (Full Width)
+        st.markdown("### Emotions Over Time")
         linechart = prepare_data_for_line_chart(extract_dates_and_emotions(analyzed_reviews))
         plot_line_chart(linechart)
-
-        # bar = plot_emotion_frequency(analyzed_reviews)
-        # extract necessary data from the previous chain
+        
+        # Extract and analyze additional review data
         alldata = extract_review_data(analyzed_reviews)
-        # start second chain
         secondanalysis_reviews = analyze.analyze_reviews_batch(alldata, chain1)
-        # transform chain data to make it operateable
         secondanalysis_reviews = transform_second(secondanalysis_reviews)
-        # transform data to create clear output
         preprocess_columns(secondanalysis_reviews)
 
-        # gezondheidsratio
-        gezondratio = secondanalysis_reviews['score'].iloc[0]
-        st.plotly_chart(create_gezondratio_chart(gezondratio))
-
-        # display most common reviews, solutions, reasoning for positive, negative and market
-        display_reviews(secondanalysis_reviews['positives'], secondanalysis_reviews['negatives'], secondanalysis_reviews['negative_solution'], secondanalysis_reviews['negative_reasoning'], secondanalysis_reviews['market_solution'], secondanalysis_reviews['market_reasoning'])
-
+        with col3:
+            # Health Ratio
+            st.markdown("#### Product Health")
+            gezondratio = secondanalysis_reviews['score'].iloc[0]
+            st.plotly_chart(create_gezondratio_chart(gezondratio), use_container_width=True)
+        
+        # Reviews and Insights Section
+        st.markdown("## Reviews and Market Insights")
+        display_reviews(
+            secondanalysis_reviews['positives'], 
+            secondanalysis_reviews['negatives'], 
+            secondanalysis_reviews['negative_reasoning'], 
+            secondanalysis_reviews['negative_solution'], 
+            secondanalysis_reviews['market_solution'], 
+            secondanalysis_reviews['market_reasoning']
+        )
+        
 def preprocess_columns(df):
     for column in ['positives', 'negatives', 'negative_reasoning', 'negative_solution', 'market_solution', 'market_reasoning']:
         df[column] = df[column].apply(lambda x: eval(x) if isinstance(x, str) else x)
@@ -98,7 +112,7 @@ def display_reviews(positives_column, negatives_column, reasoning_column, soluti
 
     # Add reasoning and solution below the lists
     st.markdown("### Negative Reasoning and Solutions")
-    for reasoning, solution in zip(solution_column, reasoning_column):
+    for solution, reasoning in zip(solution_column, reasoning_column):
         st.markdown("#### Suggested Solutions:")
         if isinstance(solution, list):
             for sol in solution:
@@ -156,7 +170,6 @@ def create_gezondratio_chart(value):
     Returns:
     fig: Plotly figure object
     """
-    st.markdown("#### Gezondheidsratio")
 
     # Set color based on value
     if value < 50:
