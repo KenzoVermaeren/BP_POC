@@ -1,7 +1,17 @@
+import dotenv
+
+dotenv.load()
+
 import streamlit as st
 from src import get_data, analyze
-from src.app.analyseChain import chain
-from src.app.analyseChain_overall import chain1
+from src.app.analyseChain_GPT import chain as GPTchain
+from src.app.analyseChain_overall_GPT import chain1 as GPTchain1
+from src.app.analyseChain_claude import chain as claudechain
+from src.app.analyseChain_overall_claude import chain1 as claudechain1
+from src.app.analyseChain_LLaMA import chain as llamachain
+from src.app.analyseChain_overall_LLaMA import chain1 as llamachain1
+from src.app.analyseChain_gemini import chain as geminichain
+from src.app.analyseChain_overall_gemini import chain1 as geminichain1
 import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
@@ -13,6 +23,7 @@ from collections import Counter
 import ast
 from babel.dates import parse_date
 import matplotlib.pyplot as plt
+import time
 
 month_translation = {
     "januari": "January", "februari": "February", "maart": "March", "april": "April",
@@ -20,15 +31,27 @@ month_translation = {
     "september": "September", "oktober": "October", "november": "November", "december": "December"
 }
 
+chains_to_use = {
+    "GPT": (GPTchain, GPTchain1),
+    "Claude": (claudechain, claudechain1),
+    "Llama": (llamachain, llamachain1),
+    "Gemini": (geminichain, geminichain1)
+}
 
 def main():
     st.title("Coolblue Sentiment Dashboard")
     url = st.sidebar.text_input("Coolblue URL", placeholder="Provide your Coolblue URL here")
 
+    chain = st.sidebar.selectbox(
+    "What model would you like",
+        ("GPT", "Claude", "Llama", "Gemini"),
+        index=0
+    )
+    
     if st.sidebar.button("Confirm", type="primary"):
         # Get the data
         data = get_data.get_reviews(url)
-        analyzed_reviews = analyze.analyze_reviews(data, chain)
+        analyzed_reviews = analyze.analyze_reviews(data, chains_to_use[chain][0])
         analyzed_reviews = transform_reviews(analyzed_reviews)
         
         # Current Feeling - Full Width
@@ -63,7 +86,9 @@ def main():
         
         # Extract and analyze additional review data
         alldata = extract_review_data(analyzed_reviews)
-        secondanalysis_reviews = analyze.analyze_reviews_batch(alldata, chain1)
+        if chain == "Llama":
+            time.sleep(70)
+        secondanalysis_reviews = analyze.analyze_reviews_batch(alldata, chains_to_use[chain][1])
         secondanalysis_reviews = transform_second(secondanalysis_reviews)
         preprocess_columns(secondanalysis_reviews)
 
@@ -143,14 +168,14 @@ def display_emote(feeling):
     Displays an emote on the dashboard based on the given feeling.
     
     Parameters:
-    feeling (str): The current feeling, one of ['angry', 'frustrated', 'sad', 'resentment', 'happy'].
+    feeling (str): The current feeling, one of ['angry', 'frustrated', 'sad', 'neutral', 'happy'].
     """
     # Mapping feelings to emotes
     emotes = {
         'angry': '😡',
         'frustrated': '😠',
         'sad': '😢',
-        'resentment': '😤',
+        'neutral': '😐',
         'happy': '😊'
     }
     
@@ -436,13 +461,13 @@ def transform_second(input_data):
 def plot_emotion_frequency_streamlit(analyzed_reviews):
     """
     Displays a bar chart of emotion frequency on a Streamlit dashboard, 
-    with emotions displayed in the order: sad → happy → frustrated → angry → resentment.
+    with emotions displayed in the order: sad → happy → frustrated → angry → neutral.
 
     Parameters:
     analyzed_reviews (list): List of dictionaries containing review and analysis data.
     """
     # Define allowed emotions in the desired order
-    allowed_emotions = ['sad', 'happy', 'frustrated', 'angry', 'resentment']
+    allowed_emotions = ['sad', 'neutral', 'happy', 'frustrated', 'angry']
 
     # Count frequency of emotions for bar chart, filtering only allowed emotions
     emotions = [entry['analysis']['emotion'] for entry in analyzed_reviews if entry['analysis']['emotion'] in allowed_emotions]
@@ -502,10 +527,10 @@ def extract_dates_and_emotions(mock_data):
 # Map emotions to numerical values (for y-axis)
 emotion_mapping = {
     'sad': 0,
-    'happy': 1,
-    'frustrated': 2,
-    'angry': 3,
-    'resentment': 4
+    'neutral': 1,
+    'happy': 2,
+    'frustrated': 3,
+    'angry': 4,
 }
 
 # Reverse the emotion mapping to display emotions on y-axis
@@ -529,25 +554,40 @@ def plot_line_chart(df_emotions_prepared):
     # Set the 'Date' column as index
     df_emotions_prepared.set_index('Date', inplace=True)
     
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # Ensure all emotions are displayed on the y-axis
+    y_tick_vals = list(range(len(emotion_mapping)))  # Numeric values for y-axis ticks
+    y_tick_labels = [reverse_emotion_mapping[i] for i in y_tick_vals]  # Corresponding emotion labels
     
-    # Plot the line chart
-    ax.plot(df_emotions_prepared.index, df_emotions_prepared['Emotion_Num'], marker='o', linestyle='-', color='b')
+    # Create the Plotly line chart
+    fig = go.Figure()
     
-    # Set y-ticks to emotions instead of numbers
-    ax.set_yticks(range(len(emotion_mapping)))  # Set y-ticks for each emotion
-    ax.set_yticklabels([reverse_emotion_mapping[i] for i in range(len(emotion_mapping))])  # Map numbers to emotions
+    # Add the line trace
+    fig.add_trace(go.Scatter(
+        x=df_emotions_prepared.index,  # X-axis values (Date)
+        y=df_emotions_prepared['Emotion_Num'],  # Y-axis values (numeric)
+        mode='lines+markers',  # Line and markers
+        marker=dict(color='blue'),
+        line=dict(shape='linear')
+    ))
     
-    # Set the labels and title
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Emotion')
-    ax.set_title('Emotions Over Time')
-
-    # Rotate x-axis labels for readability
-    plt.xticks(rotation=45)
+    # Update layout for labels and customization
+    fig.update_layout(
+        title='Emotions Over Time',
+        xaxis=dict(
+            title='Date',
+            tickangle=45
+        ),
+        yaxis=dict(
+            title='Emotion',
+            tickmode='array',
+            tickvals=y_tick_vals,  # All possible emotion numbers
+            ticktext=y_tick_labels  # All emotion labels
+        ),
+        margin=dict(l=40, r=40, t=40, b=40)  # Adjust margins
+    )
     
-    # Display the plot
-    st.pyplot(fig)
+    # Show the plot in Streamlit
+    st.plotly_chart(fig)
+    
 if __name__ == "__main__":
     main()
