@@ -37,22 +37,6 @@ Detailed Analysis Requirements:
    - Calculate the precise average rating
    - Provide statistical context for the average (e.g., distribution, median, mode)
 
-4. Temporal Emotional Tracking:
-   - Create a chronological timeline mapping reviews to their emotional tone
-   - Highlight any significant emotional trends or shifts over time
-
-5. Detailed Feedback Breakdown:
-   - Identify and categorize the most frequent positive ("plus") aspects
-   - Systematically analyze the most common negative ("min") points
-   - For each significant negative aspect:
-     * Propose specific, actionable solutions
-     * Provide market-informed recommendations for improvement
-
-6. Strategic Market Recommendation:
-   - Develop a comprehensive market strategy recommendation
-   - Base suggestions on the holistic review analysis
-   - Include insights on product positioning, potential improvements, and market opportunities
-
 Deliverable Format:
 - Provide a well-structured dictionary/library with clear sections
 - Ensure each section is thoroughly explained
